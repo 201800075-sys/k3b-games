@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>小小統計員 Pro 📊</title>
+    <style>
+        :root { 
+            --blue: #3498db; --orange: #e67e22; --green: #2ecc71; --red: #ff4757; --yellow: #f1c40f; 
+            --slate: #2c3e50;
+        }
+        * { box-sizing: border-box; }
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: #fdfaf0; margin: 0; padding: 0; overflow: hidden;
+        }
+
+        #welcomeOverlay, #scorePage {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: white; display: flex; flex-direction: column; justify-content: center; align-items: center;
+            z-index: 10000;
+        }
+        #scorePage { background: rgba(255,255,255,0.98); display: none; }
+        #scorePage.active { display: flex; }
+
+        /* 特效畫布 */
+        #confettiCanvas {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; z-index: 10001;
+        }
+
+        .start-btn {
+            width: 150px; height: 150px; background: var(--green); border-radius: 50%;
+            color: white; border: 8px solid #cefad0; font-size: 24px; font-weight: bold;
+            cursor: pointer; animation: pulse 2s infinite; display: flex; align-items: center; justify-content: center;
+        }
+        @keyframes pulse { 0% { transform: scale(0.95); } 70% { transform: scale(1.05); } 100% { transform: scale(0.95); } }
+
+        .page { display: none; width: 100vw; height: 100vh; padding: 20px; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .page.active { display: grid; }
+
+        .card { background: white; border-radius: 20px; padding: 20px; box-shadow: 0 8px 20px rgba(0,0,0,0.05); height: 100%; display: flex; flex-direction: column; }
+        
+        .chart-header { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 10px; width: 100%; cursor: pointer; }
+        .chart-title { font-size: 1.3rem; font-weight: bold; color: var(--slate); border-left: 5px solid var(--blue); padding-left: 10px; }
+
+        /* 第一部分網格優化 */
+        .grid-box { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; background: #fffcf5; border-radius: 15px; padding: 15px; overflow-y: auto; flex-grow: 1; border: 3px solid transparent; }
+        .char-item { height: 95px; background: white; border-radius: 12px; border: 1px solid #eee; display: flex; align-items: center; justify-content: center; position: relative; cursor: pointer; overflow: hidden; }
+        
+        /* 統一圖案大小 */
+        .grid-img { width: 75px; height: 75px; object-fit: contain; pointer-events: none; }
+        .img-f { transform: scale(1.1); } /* 消防員微調 */
+        .img-d { transform: scale(1.05); } /* 醫生微調 */
+
+        .mark-p::after { content: "✕"; position: absolute; font-size: 60px; color: var(--red); font-weight: bold; z-index: 2; }
+        .mark-f::after { content: "◯"; position: absolute; font-size: 60px; color: var(--blue); font-weight: bold; z-index: 2; }
+        .mark-d::after { content: "✓"; position: absolute; font-size: 70px; color: var(--green); font-weight: bold; z-index: 2; }
+
+        /* 統計圖樣式 */
+        .chart-container { display: flex; flex-direction: column; align-items: center; flex-grow: 1; background: #f0f4f7; border-radius: 15px; padding: 15px; border: 2px solid #ced6e0; }
+        .chart-area { display: flex; align-items: flex-end; height: 282px; position: relative; padding-left: 10px; border-bottom: 3px solid #333; border-left: 3px solid #333; background: white; }
+        
+        .column-unit { display: flex; flex-direction: column; align-items: center; width: 70px; margin: 0 8px; }
+        .bar-wrap { width: 50px; height: 280px; display: flex; flex-direction: column-reverse; }
+        
+        .block { height: 40px; width: 100%; border: 1px solid #ddd; background: white; flex-shrink: 0; transition: background 0.3s ease; }
+        .active-p { background: var(--blue) !important; }
+        .active-f { background: var(--orange) !important; }
+        .active-d { background: var(--green) !important; }
+        
+        .label-area { display: flex; justify-content: center; margin-top: 15px; }
+        .icon-label { width: 75px; margin: 0 5px; display: flex; flex-direction: column; align-items: center; cursor: pointer; background: #fff; padding: 8px; border-radius: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); border: 3px solid transparent; }
+        
+        .error-border { border: 3px solid var(--yellow) !important; animation: shake 0.5s; }
+        @keyframes shake { 0%, 100% {transform: translateX(0);} 25% {transform: translateX(-5px);} 75% {transform: translateX(5px);} }
+
+        .img-container { width: 45px; height: 45px; display: flex; align-items: center; justify-content: center; }
+        .img-container img { width: 100%; height: 100%; object-fit: contain; }
+        .inline-icon { width: 28px; height: 28px; vertical-align: middle; margin: 0 4px; object-fit: contain; }
+
+        .quiz-scroll { overflow-y: auto; flex-grow: 1; }
+        .quiz-item { background: #fff; border: 2px solid #eee; padding: 12px; border-radius: 15px; margin-bottom: 10px; cursor: pointer; }
+        .opt-card { width: 55px; height: 55px; border: 2px solid #eee; border-radius: 10px; display: inline-flex; align-items: center; justify-content: center; margin: 3px; cursor: pointer; }
+        .opt-card.active { border-color: var(--green); background: #f0fff0; }
+
+        .num-ui { display: flex; align-items: center; gap: 10px; margin-top: 5px; }
+        .num-val { font-size: 28px; font-weight: bold; color: var(--blue); min-width: 40px; text-align: center; border-bottom: 3px solid #333; }
+        .circle-btn { width: 35px; height: 35px; border-radius: 50%; border: none; font-size: 20px; background: var(--yellow); cursor: pointer; font-weight: bold; }
+
+        .nav-btn, .submit-btn { padding: 12px 25px; background: var(--green); color: white; border: none; border-radius: 50px; font-size: 18px; font-weight: bold; cursor: pointer; box-shadow: 0 4px 0 #27ae60; }
+        .speaker-icon { font-size: 14px; margin-left: 5px; color: var(--blue); }
+    </style>
+</head>
+<body>
+
+<canvas id="confettiCanvas"></canvas>
+
+<div id="welcomeOverlay">
+    <div class="start-btn" onclick="startGame()">開始遊戲</div>
+    <h2 style="color: var(--slate); margin-top: 20px;">小小統計員 Pro 📊</h2>
+</div>
+
+<div id="page1" class="page active">
+    <div class="card">
+        <h3 style="border-left: 5px solid var(--orange); padding-left: 10px;">1. 數一數，劃記號</h3>
+        <div id="gridBox" class="grid-box"></div>
+    </div>
+    <div class="card">
+        <div class="chart-header" onclick="speak('救災人員統計圖，每個方塊代表一個人')">
+            <div class="chart-title">救災人員統計圖 <span class="speaker-icon">🔊</span></div>
+        </div>
+        <div class="chart-container">
+            <div class="chart-area">
+                <div class="chart-column-group" style="display: flex;">
+                    <div class="column-unit"><div id="bar-p1" class="bar-wrap"></div></div>
+                    <div class="column-unit"><div id="bar-f1" class="bar-wrap"></div></div>
+                    <div class="column-unit"><div id="bar-d1" class="bar-wrap"></div></div>
+                </div>
+            </div>
+            <div class="label-area">
+                <div class="icon-label" id="lbl-p" onclick="addBar('p')"><div class="img-container"><img src="police.png"></div><small>警察</small></div>
+                <div class="icon-label" id="lbl-f" onclick="addBar('f')"><div class="img-container"><img src="fireman.png"></div><small>消防員</small></div>
+                <div class="icon-label" id="lbl-d" onclick="addBar('d')"><div class="img-container"><img src="doctor.png"></div><small>醫生</small></div>
+            </div>
+            <button class="nav-btn" style="margin-top: auto;" onclick="checkPage1()">下一步 ➔</button>
+        </div>
+    </div>
+</div>
+
+<div id="page2" class="page">
+    <div class="card">
+        <div class="chart-header"><div class="chart-title">救災人員統計圖</div></div>
+        <div class="chart-container">
+            <div class="chart-area">
+                <div class="chart-column-group" style="display: flex;">
+                    <div class="column-unit"><div id="bar-p2" class="bar-wrap"></div></div>
+                    <div class="column-unit"><div id="bar-f2" class="bar-wrap"></div></div>
+                    <div class="column-unit"><div id="bar-d2" class="bar-wrap"></div></div>
+                </div>
+            </div>
+            <div class="label-area">
+                <div class="icon-label"><div class="img-container"><img src="police.png"></div></div>
+                <div class="icon-label"><div class="img-container"><img src="fireman.png"></div></div>
+                <div class="icon-label"><div class="img-container"><img src="doctor.png"></div></div>
+            </div>
+            <button class="nav-btn" style="background:#95a5a6; box-shadow:0 4px 0 #7f8c8d; margin-top: auto;" onclick="switchPage(1)">⬅ 修改圖表</button>
+        </div>
+    </div>
+    <div class="card">
+        <h3 style="border-left: 5px solid var(--green); padding-left: 10px;">3. 回答問題</h3>
+        <div class="quiz-scroll">
+            <div class="quiz-item" id="item-q1" onclick="speak('第一題，最多的是哪種職業？')">
+                <b>1. 最多的是哪種職業？ <span class="speaker-icon">🔊</span></b><br>
+                <div class="opt-card" id="q1p" onclick="event.stopPropagation(); pick('q1','p')"><div class="img-container"><img src="police.png"></div></div>
+                <div class="opt-card" id="q1f" onclick="event.stopPropagation(); pick('q1','f')"><div class="img-container"><img src="fireman.png"></div></div>
+                <div class="opt-card" id="q1d" onclick="event.stopPropagation(); pick('q1','d')"><div class="img-container"><img src="doctor.png"></div></div>
+                <div class="num-ui" onclick="event.stopPropagation()">共 <span id="ans-q1" class="num-val">0</span> 人 <button class="circle-btn" onclick="change('q1',1)">+</button></div>
+            </div>
+            <div class="quiz-item" id="item-q2" onclick="speak('第二題，最少的是哪種職業？')">
+                <b>2. 最少的是哪種職業？ <span class="speaker-icon">🔊</span></b><br>
+                <div class="opt-card" id="q2p" onclick="event.stopPropagation(); pick('q2','p')"><div class="img-container"><img src="police.png"></div></div>
+                <div class="opt-card" id="q2f" onclick="event.stopPropagation(); pick('q2','f')"><div class="img-container"><img src="fireman.png"></div></div>
+                <div class="opt-card" id="q2d" onclick="event.stopPropagation(); pick('q2','d')"><div class="img-container"><img src="doctor.png"></div></div>
+                <div class="num-ui" onclick="event.stopPropagation()">共 <span id="ans-q2" class="num-val">0</span> 人 <button class="circle-btn" onclick="change('q2',1)">+</button></div>
+            </div>
+            <div class="quiz-item" id="item-q3" onclick="speak('第三題，警察比醫生多幾人？')">
+                <b>3. 警察 <img src="police.png" class="inline-icon"> 比 醫生 <img src="doctor.png" class="inline-icon"> 多幾人？ <span class="speaker-icon">🔊</span></b>
+                <div class="num-ui" onclick="event.stopPropagation()">多 <span id="ans-q3" class="num-val">0</span> 人 <button class="circle-btn" onclick="change('q3',1)">+</button></div>
+            </div>
+        </div>
+        <button class="submit-btn" onclick="checkFinal()">檢查答案</button>
+    </div>
+</div>
+
+<div id="scorePage">
+    <h1 style="font-size: 80px; color: var(--red); margin: 0;">100</h1>
+    <h2>太棒了！滿分！💯</h2>
+    <button class="submit-btn" onclick="location.reload()">再玩一次</button>
+</div>
+
+<script>
+    let counts = {p:0, f:0, d:0};
+    let ans = {q1r:'', q1n:0, q2r:'', q2n:0, q3n:0};
+    let audioCtx;
+
+    function speak(text) {
+        window.speechSynthesis.cancel();
+        const msg = new SpeechSynthesisUtterance(text);
+        msg.lang = 'zh-HK';
+        window.speechSynthesis.speak(msg);
+    }
+
+    function initAudio() {
+        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+
+    function playClickSound() {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.connect(gain); gain.connect(audioCtx.destination);
+        osc.frequency.setValueAtTime(800, audioCtx.currentTime);
+        gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
+        osc.start(); osc.stop(audioCtx.currentTime + 0.1);
+    }
+
+    function playWinSound() {
+        const notes = [523.25, 659.25, 783.99, 1046.50];
+        notes.forEach((freq, i) => {
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain); gain.connect(audioCtx.destination);
+            osc.frequency.setValueAtTime(freq, audioCtx.currentTime + i * 0.1);
+            gain.gain.setValueAtTime(0.1, audioCtx.currentTime + i * 0.1);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + i * 0.1 + 0.4);
+            osc.start(audioCtx.currentTime + i * 0.1);
+            osc.stop(audioCtx.currentTime + i * 0.1 + 0.4);
+        });
+    }
+
+    function startBGM() {
+        const notes = [261.63, 329.63, 392.00, 523.25];
+        let i = 0;
+        setInterval(() => {
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain); gain.connect(audioCtx.destination);
+            osc.frequency.setValueAtTime(notes[i % 4], audioCtx.currentTime);
+            gain.gain.setValueAtTime(0.02, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.8);
+            osc.start(); osc.stop(audioCtx.currentTime + 0.8);
+            i++;
+        }, 800);
+    }
+
+    function startGame() {
+        initAudio();
+        startBGM();
+        document.getElementById('welcomeOverlay').style.display = 'none';
+        syncChart(1);
+        speak("歡迎嚟到小小統計員遊戲，請先數一數，填好統計圖。");
+    }
+
+    function addBar(t) {
+        playClickSound();
+        counts[t] = (counts[t] >= 7) ? 0 : counts[t] + 1;
+        syncChart(1);
+        document.getElementById('lbl-'+t).classList.remove('error-border');
+    }
+
+    function syncChart(pg) {
+        ['p', 'f', 'd'].forEach(t => {
+            const container = document.getElementById(`bar-${t}${pg}`);
+            if(!container) return;
+            container.innerHTML = '';
+            for(let i=0; i<7; i++) {
+                let b = document.createElement('div');
+                b.className = 'block';
+                if(i < counts[t]) b.classList.add('active-' + t);
+                container.appendChild(b);
+            }
+        });
+    }
+
+    function checkPage1() {
+        let hasError = false;
+        if(counts.p !== 6) { document.getElementById('lbl-p').classList.add('error-border'); hasError = true; }
+        if(counts.f !== 4) { document.getElementById('lbl-f').classList.add('error-border'); hasError = true; }
+        if(counts.d !== 3) { document.getElementById('lbl-d').classList.add('error-border'); hasError = true; }
+        if(!hasError) { switchPage(2); speak("做得好！請回答問答題。"); }
+        else speak("統計圖仲有地方唔啱喎。");
+    }
+
+    function switchPage(p) {
+        document.querySelectorAll('.page').forEach(el => el.classList.remove('active'));
+        document.getElementById('page' + p).classList.add('active');
+        if(p === 2) syncChart(2);
+    }
+
+    function pick(q, t) {
+        playClickSound();
+        ans[q+'r'] = t;
+        document.querySelectorAll(`#${q}p, #${q}f, #${q}d`).forEach(el=>el.classList.remove('active'));
+        document.getElementById(q+t).classList.add('active');
+    }
+
+    function change(q, n) {
+        playClickSound();
+        ans[q+'n'] = (ans[q+'n'] >= 10) ? 0 : ans[q+'n'] + n;
+        document.getElementById('ans-'+q).innerText = ans[q+'n'];
+    }
+
+    // 初始化網格
+    const gridData = ['p','p','p','p','p','p', 'f','f','f','f', 'd','d','d'];
+    gridData.sort(()=>Math.random()-0.5).forEach(t => {
+        let d = document.createElement('div');
+        d.className = 'char-item';
+        let img = t==='p'?'police.png':t==='f'?'fireman.png':'doctor.png';
+        let imgClass = t==='p'?'img-p':t==='f'?'img-f':'img-d';
+        d.innerHTML = `<img src="${img}" class="grid-img ${imgClass}">`;
+        d.onclick = function() { playClickSound(); this.classList.toggle('mark-'+t); };
+        document.getElementById('gridBox').appendChild(d);
+    });
+
+    // 五彩紙屑特效代碼
+    const canvas = document.getElementById('confettiCanvas');
+    const ctx = canvas.getContext('2d');
+    let pieces = [];
+    function initConfetti() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        for(let i=0; i<100; i++) {
+            pieces.push({
+                x: Math.random()*canvas.width, y: Math.random()*canvas.height - canvas.height,
+                s: Math.random()*10+5, c: `hsl(${Math.random()*360}, 80%, 50%)`,
+                v: Math.random()*3+2, r: Math.random()*360
+            });
+        }
+    }
+    function drawConfetti() {
+        ctx.clearRect(0,0,canvas.width, canvas.height);
+        pieces.forEach(p => {
+            p.y += p.v; p.r += 2;
+            if(p.y > canvas.height) p.y = -20;
+            ctx.save();
+            ctx.translate(p.x, p.y); ctx.rotate(p.r * Math.PI/180);
+            ctx.fillStyle = p.c; ctx.fillRect(-p.s/2, -p.s/2, p.s, p.s);
+            ctx.restore();
+        });
+        requestAnimationFrame(drawConfetti);
+    }
+
+    function checkFinal() {
+        let err = 0;
+        if(ans.q1r!=='p' || ans.q1n!==6) { document.getElementById('item-q1').classList.add('error-border'); err++; }
+        else document.getElementById('item-q1').classList.remove('error-border');
+        if(ans.q2r!=='d' || ans.q2n!==3) { document.getElementById('item-q2').classList.add('error-border'); err++; }
+        else document.getElementById('item-q2').classList.remove('error-border');
+        if(ans.q3n!==3) { document.getElementById('item-q3').classList.add('error-border'); err++; }
+        else document.getElementById('item-q3').classList.remove('error-border');
+
+        if(err === 0) {
+            playWinSound();
+            initConfetti();
+            drawConfetti();
+            document.getElementById('scorePage').classList.add('active');
+            speak("恭喜你！攞到一百分！好叻呀！");
+        } else {
+            speak("有啲地方答錯咗喎。");
+        }
+    }
+</script>
+</body>
+</html>
